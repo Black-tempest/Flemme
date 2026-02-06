@@ -11,9 +11,9 @@
   },
   "antiInbox": true,
   "checkApproval": true,
-  "language": "fr",
+  "language": "en",
   "notesLanguage": "change to your language with ISO 639-1 code, available languages: vi (Vietnamese), en (English)",
-  "nickNameBot": "Kafka💫cmr",
+  "nickNameBot": "𝗚𝗲𝗻 𝗡𝗮𝗿𝘂𝗺𝗶💫𝗰𝗺𝗿 𝗞𝗮𝗸𝗮𝘀𝗵𝗶➩ 𝗯𝗼𝘁",
   "prefix": "•",
   "adminOnly": {
     "enable": false,
