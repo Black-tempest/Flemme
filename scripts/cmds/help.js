@@ -52,7 +52,7 @@ module.exports = {
 
       let msg =
 `╔ ✓ ℂ𝕆𝕄𝕄𝔸ℕ𝔻 𝕃𝕀𝕊𝕋 ✓╗
-║ 😉 hey ${toBold(userName)}, voici la liste de commandes dispo
+║ 😉 hey ${toBold(userName)}, voici la liste des commandes dispo
 ╠═══════════════╝
 
 `;
