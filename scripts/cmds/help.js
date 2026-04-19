@@ -1,91 +1,140 @@
 const { getPrefix } = global.utils;
-const { commands } = global.GoatBot;
+const { commands, aliases } = global.GoatBot;
+
+// ✅ BOLD
+function toBold(text) {
+  const map = {
+    A:"𝐀",B:"𝐁",C:"𝐂",D:"𝐃",E:"𝐄",F:"𝐅",G:"𝐆",H:"𝐇",I:"𝐈",J:"𝐉",
+    K:"𝐊",L:"𝐋",M:"𝐌",N:"𝐍",O:"𝐎",P:"𝐏",Q:"𝐐",R:"𝐑",S:"𝐒",T:"𝐓",
+    U:"𝐔",V:"𝐕",W:"𝐖",X:"𝐗",Y:"𝐘",Z:"𝐙",
+    a:"𝐚",b:"𝐛",c:"𝐜",d:"𝐝",e:"𝐞",f:"𝐟",g:"𝐠",h:"𝐡",i:"𝐢",j:"𝐣",
+    k:"𝐤",l:"𝐥",m:"𝐦",n:"𝐧",o:"𝐨",p:"𝐩",q:"𝐪",r:"𝐫",s:"𝐬",t:"𝐭",
+    u:"𝐮",v:"𝐯",w:"𝐰",x:"𝐱",y:"𝐲",z:"𝐳"
+  };
+  return text.split('').map(c => map[c] || c).join('');
+}
+
+// ✅ NORMALISATION
+function normalizeCategory(cat) {
+  if (!cat) return "other";
+
+  return cat
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+// ✅ NOM PROPRE
+function cleanCategoryName(cat) {
+  if (!cat) return "OTHER";
+  return cat.toUpperCase();
+}
 
 module.exports = {
   config: {
     name: "help",
-    version: "3.5",
-    author: "Mostakim",
-    usePrefix: false,
+    version: "10.1",
+    author: "Ivdra Uchiwa",
     role: 0,
-    category: "info",
-    priority: 1
+    category: "info"
   },
 
-  onStart: async function ({ message, args, event, threadsData, role }) {
-    const prefix = getPrefix(event.threadID);
-    const arg = args[0]?.toLowerCase();
+  onStart: async function ({ message, args, event, usersData }) {
+    const prefix = await getPrefix(event.threadID);
 
-    const header = "╔═━「 𝐇𝐄𝐋𝐏 𝐌𝐄𝐍𝐔 」━═╗";
-    const footer = "╚═━──────────────━═╝";
+    // ✅ NOM UTILISATEUR
+    const userName = await usersData.getName(event.senderID) || "User";
 
-    if (!arg) {
-      const list = Array.from(commands.entries())
-        .filter(([_, cmd]) => cmd.config?.role <= role)
-        .map(([name]) => `┃ ✦ ${name}`)
-        .join("\n");
+    // ================= LIST =================
+    if (!args.length) {
 
-      return message.reply(
-        `${header}\n` +
-        `┃ 🔑 Prefix: ${prefix}\n` +
-        `┃ 📂 Total Commands: ${commands.size}\n` +
-        `┃ ⚙️ Available Commands:\n` +
-        `${list}\n` +
-        `${footer}\n` +
-        `\n📌 Use \`${prefix}help -<category>\` to filter by category\n` +
-        `📌 Use \`${prefix}help <command>\` to see command info`
+      let msg =
+`╔ ✓ ℂ𝕆𝕄𝕄𝔸ℕ𝔻 𝕃𝕀𝕊𝕋 ✓╗
+║ 😉 hey ${toBold(userName)}, voici la liste de commandes dispo
+╠═══════════════╝
+
+`;
+
+      const categories = {};
+
+      for (const [name, value] of commands) {
+
+        const rawCategory = value.config.category || "OTHER";
+        const key = normalizeCategory(rawCategory);
+
+        if (!categories[key]) {
+          categories[key] = {
+            name: cleanCategoryName(rawCategory),
+            cmds: new Set()
+          };
+        }
+
+        categories[key].cmds.add(name);
+      }
+
+      // 🔥 TRI CATÉGORIES
+      const sortedCategories = Object.values(categories).sort((a, b) =>
+        a.name.localeCompare(b.name)
       );
+
+      for (const cat of sortedCategories) {
+
+        msg += `【 ${toBold(cat.name)} 】\n`;
+
+        const sortedCmds = [...cat.cmds].sort((a, b) =>
+          a.localeCompare(b)
+        );
+
+        for (const cmd of sortedCmds) {
+          msg += `➩ ${toBold(cmd)} 🌹\n`;
+        }
+
+        msg += "\n";
+      }
+
+      msg += `╚═══════════════╝\n`;
+      msg += `✨ Total: ${commands.size}\n`;
+      msg += `📌 Use: ${prefix}help <command>`;
+
+      return message.reply(msg);
     }
 
-    if (arg === "-c" && args[1]) {
-      const cmdName = args[1].toLowerCase();
-      const cmd = commands.get(cmdName) || commands.get(global.GoatBot.aliases.get(cmdName));
+    // ================= DETAIL =================
+    const name = args[0].toLowerCase();
+    const cmd = commands.get(name) || commands.get(aliases.get(name));
 
-      if (!cmd || cmd.config.role > role)
-        return message.reply(`✘ Command "${cmdName}" not found or access denied.`);
+    if (!cmd)
+      return message.reply(`❌ Command "${name}" not found`);
 
-      return message.reply(
-        `${header}\n` +
-        `┃ ✦ Command: ${cmdName}\n` +
-        `┃ ✦ Category: ${cmd.config.category || "Uncategorized"}\n` +
-        `${footer}`
-      );
-    }
-
-    if (arg.startsWith("-")) {
-      const category = arg.slice(1).toLowerCase();
-      const matched = Array.from(commands.entries())
-        .filter(([_, cmd]) => cmd.config?.category?.toLowerCase() === category && cmd.config.role <= role)
-        .map(([name]) => `┃ ✦ ${name}`);
-
-      if (matched.length === 0)
-        return message.reply(`✘ No commands found under "${category}".`);
-
-      return message.reply(
-        `╔═━「 𝐂𝐀𝐓𝐄𝐆𝐎𝐑𝐘: ${category.toUpperCase()} 」━═╗\n` +
-        `${matched.join("\n")}\n` +
-        `${footer}\n` +
-        `\n📌 Try: \`${prefix}help <command>\` to view details`
-      );
-    }
-
-    const cmd = commands.get(arg) || commands.get(global.GoatBot.aliases.get(arg));
-
-    if (!cmd || cmd.config.role > role)
-      return message.reply(`✘ Command "${arg}" not found.`);
-
-    const info = cmd.config;
-    const guide = info.guide?.en || "No usage info.";
-    const desc = info.longDescription?.en || "No description.";
+    const cfg = cmd.config;
 
     return message.reply(
-      `╔═━「 𝐂𝐎𝐌𝐌𝐀𝐍𝐃 𝐃𝐄𝐓𝐀𝐈𝐋𝐒 」━═╗\n` +
-      `┃ ✦ Name: ${info.name}\n` +
-      `┃ ✦ Description: ${desc}\n` +
-      `┃ ✦ Usage: ${guide.replace(/{p}/g, prefix).replace(/{n}/g, info.name)}\n` +
-      `┃ ✦ Role: ${info.role}\n` +
-      `┃ ✦ Category: ${info.category || "Uncategorized"}\n` +
-      `${footer}`
+`╔『 📌ℂ𝕆𝕄𝕄𝔸𝔻 𝕀ℕ𝔽𝕆』╗
+
+➩ Name: ${toBold(cfg.name)}
+➩ Description: ${cfg.longDescription?.en || "No description"}
+➩ Aliases: ${cfg.aliases?.join(", ") || "None"}
+➩ Version: ${cfg.version || "1.0"}
+➩ Role: ${roleText(cfg.role)}
+➩ Cooldown: ${cfg.countDown || 2}s
+➩ Author: ${cfg.author || "Unknown"}
+
+📖 Usage:
+${toBold((cfg.guide?.en || "No guide")
+  .replace(/{pn}/g, prefix)
+  .replace(/{n}/g, cfg.name))}
+
+╚═══════════════╝`
     );
   }
 };
+
+// ✅ ROLE
+function roleText(role) {
+  if (role == 0) return "All users";
+  if (role == 1) return "Group admin";
+  if (role == 2) return "Bot admin";
+  return "Unknown";
+  }
