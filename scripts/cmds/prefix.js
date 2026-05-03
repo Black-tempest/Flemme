@@ -92,16 +92,16 @@ const systemPrefix = global.GoatBot.config.prefix;
 const threadPrefix = utils.getPrefix(event.threadID);
 
 const msg =
-`╭════════════╮
- |
- |  Current bot prefix : ${threadPrefix}
- |  System prefix : ${systemPrefix}
- |  I am at your service ${userName} 🫡
- |  Type ${threadPrefix}help to see command list
- |  Creator: Ivdra Uchiwa
- |  Facebook: https://www.facebook.com/kakashi.cmr
- |
-╰════════════╯`;
+`╭══════════════╮
+ ┃
+ ┃ 💠 Current bot prefix : ${threadPrefix}
+ ┃ 🗝️ System prefix : ${systemPrefix}
+ ┃  I am at your service ${userName} 🫡
+ ┃ 📌 Type ${threadPrefix}help to see command list
+ ┃ 👑 Creator: Ivdra Uchiwa
+ ┃ 🔗 Facebook: https://www.facebook.com/kakashi.cmr
+ ┃
+ ╰══════════════╯`;
 
 return message.reply(msg);
 }
