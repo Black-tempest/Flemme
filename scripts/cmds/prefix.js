@@ -1,254 +1,39 @@
 const fs = require("fs-extra");
-const { utils } = global;
-const axios = require("axios");
-const fsN = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { createCanvas, loadImage } = require("canvas");
+const { utils } = global;
 
-// ═══════════════════════════════════════════════════════
-//  SCRIPT PYTHON — CARTE ORBITALE
-//  Génère une image "système solaire" avec :
-//   • Soleil rouge  = préfixe système (centre)
-//   • Planètes colorées orbitant autour = infos du bot
-// ═══════════════════════════════════════════════════════
-function buildPythonScript(sysPrefix, threadPrefix, userName, creator, fbLink) {
-  // On échappe les apostrophes pour éviter de casser le shell
-  const esc = s => String(s).replace(/'/g, "\\'").slice(0, 18);
-  return `
-import sys, math
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
-
-W, H = 900, 900
-FONT = '/data/data/com.termux/files/usr/share/fonts/truetype'
-import os
-
-def find_font(bold=False, mono=False):
-    candidates = []
-    if mono:
-        candidates = ['LiberationMono-Bold','DejaVuSansMono-Bold','FreeMono']
-    elif bold:
-        candidates = ['LiberationSans-Bold','DejaVuSans-Bold','FreeSansBold']
-    else:
-        candidates = ['LiberationSans-Regular','DejaVuSans','FreeSans']
-    dirs = [
-        '/data/data/com.termux/files/usr/share/fonts',
-        '/usr/share/fonts/truetype/liberation',
-        '/usr/share/fonts/truetype/dejavu',
-        '/usr/share/fonts/truetype/freefont',
-        '/system/fonts',
-    ]
-    for d in dirs:
-        if not os.path.isdir(d): continue
-        for root,_,files in os.walk(d):
-            for f in files:
-                for c in candidates:
-                    if c.lower() in f.lower() and f.endswith('.ttf'):
-                        return os.path.join(root, f)
-    return None
-
-fp_b = find_font(bold=True)
-fp_r = find_font(bold=False)
-fp_m = find_font(mono=True)
-
-def fb(s):
-    try: return ImageFont.truetype(fp_b, s)
-    except: return ImageFont.load_default()
-def fr(s):
-    try: return ImageFont.truetype(fp_r, s)
-    except: return ImageFont.load_default()
-def fm(s):
-    try: return ImageFont.truetype(fp_m or fp_b, s)
-    except: return ImageFont.load_default()
-
-SYS_PREFIX    = '${esc(sysPrefix)}'
-THREAD_PREFIX = '${esc(threadPrefix)}'
-USER_NAME     = '${esc(userName)}'
-CREATOR       = '${esc(creator)}'
-FB_LINK       = '${esc(fbLink)}'
-OUT_PATH      = sys.argv[1]
-
-def hex2rgb(h):
-    h = h.lstrip('#')
-    return tuple(int(h[i:i+2],16) for i in (0,2,4))
-
-cx, cy = W//2, H//2 + 10
-img = Image.new('RGB',(W,H),'#06061a')
-draw = ImageDraw.Draw(img)
-
-# Grid
-for x in range(0,W,45): draw.line([(x,0),(x,H)],fill=(18,18,38))
-for y in range(0,H,45): draw.line([(0,y),(W,y)],fill=(18,18,38))
-
-# Orbites
-for r,col,a in [(145,'#ff4444',28),(255,'#00ff9d',22),(360,'#7b61ff',16)]:
-    rgb = hex2rgb(col)
-    ring = Image.new('RGBA',(W,H),(0,0,0,0))
-    ImageDraw.Draw(ring).ellipse([cx-r,cy-r,cx+r,cy+r], outline=rgb+(a,), width=2)
-    img = Image.alpha_composite(img.convert('RGBA'),ring).convert('RGB')
-draw = ImageDraw.Draw(img)
-
-# SOLEIL — glow rouge
-SUN_R = 88
-glow = Image.new('RGBA',(W,H),(0,0,0,0))
-gd = ImageDraw.Draw(glow)
-for i in range(80,0,-3):
-    a = int(130*(i/80)**2.4)
-    gd.ellipse([cx-SUN_R-i,cy-SUN_R-i,cx+SUN_R+i,cy+SUN_R+i],fill=(255,40,40,min(a,255)))
-glow = glow.filter(ImageFilter.GaussianBlur(24))
-img = Image.alpha_composite(img.convert('RGBA'),glow).convert('RGB')
-draw = ImageDraw.Draw(img)
-
-draw.ellipse([cx-SUN_R,cy-SUN_R,cx+SUN_R,cy+SUN_R], fill='#aa0e0e', outline='#ff5555', width=4)
-draw.ellipse([cx-SUN_R+8,cy-SUN_R+8,cx+SUN_R-8,cy+SUN_R-8], outline=(255,100,100,50), width=1)
-draw.text((cx,cy-22),'SYSTEM', font=fb(16), fill='#ffcccc', anchor='mm')
-draw.text((cx,cy+2), 'PREFIX', font=fr(12), fill='#ff9999', anchor='mm')
-draw.text((cx,cy+22),SYS_PREFIX, font=fb(24), fill='#ffffff', anchor='mm')
-
-# PLANETES
-planets = [
-    ( 45, 145, 55, '#0a2218','#00ff9d','THREAD', THREAD_PREFIX),
-    (225, 145, 55, '#180a22','#cc44ff','USER',   USER_NAME),
-    (315, 255, 50, '#221a08','#ffd60a','BOT',    'GoatBot'),
-    (135, 255, 48, '#08181f','#00b4d8','CMD',    SYS_PREFIX+'help'),
-    ( 20, 360, 44, '#1a0822','#ff3cac','CREATOR',CREATOR),
-    (200, 360, 44, '#0a1822','#4cc9f0','LINK',   FB_LINK),
-]
-
-# Glows d'abord
-for ang,orb_r,pr,fill,outline,label,val in planets:
-    rad = math.radians(ang)
-    px = int(cx + orb_r*math.cos(rad))
-    py = int(cy + orb_r*math.sin(rad))
-    rgb = hex2rgb(outline)
-    pg = Image.new('RGBA',(W,H),(0,0,0,0))
-    pgd = ImageDraw.Draw(pg)
-    for i in range(28,0,-3):
-        a = int(90*(i/28)**2.2)
-        pgd.ellipse([px-pr-i,py-pr-i,px+pr+i,py+pr+i],fill=rgb+(min(a,255),))
-    pg = pg.filter(ImageFilter.GaussianBlur(9))
-    img = Image.alpha_composite(img.convert('RGBA'),pg).convert('RGB')
-
-draw = ImageDraw.Draw(img)
-
-# Corps + texte
-for ang,orb_r,pr,fill,outline,label,val in planets:
-    rad = math.radians(ang)
-    px = int(cx + orb_r*math.cos(rad))
-    py = int(cy + orb_r*math.sin(rad))
-    rgb = hex2rgb(outline)
-    # Ligne de connexion
-    sx = int(cx + SUN_R*math.cos(rad))
-    sy = int(cy + SUN_R*math.sin(rad))
-    ex = int(px - pr*math.cos(rad))
-    ey = int(py - pr*math.sin(rad))
-    draw.line([(sx,sy),(ex,ey)], fill=rgb+(25,), width=1)
-    # Corps planète
-    draw.ellipse([px-pr,py-pr,px+pr,py+pr], fill=fill, outline=outline, width=3)
-    # Texte
-    draw.text((px,py-9), label, font=fb(13), fill=outline, anchor='mm')
-    draw.text((px,py+9), val,   font=fm(12), fill='#ffffff', anchor='mm')
-
-# Coins
-def bracket(x,y,dx,dy,col):
-    draw.line([(x,y),(x+dx*28,y)],fill=col,width=3)
-    draw.line([(x,y),(x,y+dy*28)],fill=col,width=3)
-bracket(18,18,1,1,'#00ff9d'); bracket(W-18,18,-1,1,'#7b61ff')
-bracket(18,H-18,1,-1,'#00ff9d'); bracket(W-18,H-18,-1,-1,'#7b61ff')
-
-# Titre
-draw.text((cx,30),'PREFIX  SYSTEM',font=fb(24),fill='#ffffff',anchor='mm')
-draw.text((cx,56),'· système orbital ·',font=fr(14),fill='#444488',anchor='mm')
-
-# Barre bas
-draw.rectangle([0,H-46,W,H],fill=(4,4,18))
-draw.line([(0,H-46),(W,H-46)],fill='#1a1a3a',width=1)
-draw.text((cx,H-24),f'Tape "{SYS_PREFIX}help" pour voir les commandes  •  GoatBot',
-          font=fr(15),fill='#3a3a66',anchor='mm')
-
-img.save(OUT_PATH,'PNG')
-print('done')
-`;
-}
-
-// ═══════════════════════════════════════════════════════
-//  GÉNÉRATION IMAGE
-// ═══════════════════════════════════════════════════════
-async function generateOrbitalCard({ sysPrefix, threadPrefix, userName, creator, fbLink, uid, tmpDir }) {
-  const outPath = path.join(tmpDir, `prefix_card_${uid}.png`);
-  const pyPath  = path.join(tmpDir, "gen_prefix.py");
-
-  fsN.writeFileSync(pyPath, buildPythonScript(sysPrefix, threadPrefix, userName, creator, fbLink));
-
-  try {
-    execSync(`python3 "${pyPath}" "${outPath}"`, { timeout: 20000 });
-    return fsN.existsSync(outPath) ? outPath : null;
-  } catch (e) {
-    console.error("[prefix] Erreur image:", e.message);
-    return null;
-  }
-}
-
-// ═══════════════════════════════════════════════════════
-//  ENVOI IMAGE + TEXTE
-// ═══════════════════════════════════════════════════════
-async function sendWithImage(message, event, body, imgPath) {
-  if (!imgPath || !fsN.existsSync(imgPath)) {
-    return message.reply(body);
-  }
-  const stream = () => fsN.createReadStream(imgPath);
-  // Méthode 1
-  try { return await message.reply({ body, attachment: stream() }); } catch {}
-  // Méthode 2
-  try { return await message.reply({ body, attachment: [stream()] }); } catch {}
-  // Méthode 3
-  try {
-    await new Promise((res, rej) => {
-      const api = message.api || global.client?.api;
-      if (!api) return rej();
-      api.sendMessage({ body, attachment: stream() }, event.threadID, e => e ? rej(e) : res());
-    });
-    return;
-  } catch {}
-  // Fallback texte
-  return message.reply(body);
-}
-
-// ═══════════════════════════════════════════════════════
-//  MODULE
-// ═══════════════════════════════════════════════════════
 module.exports = {
   config: {
     name: "prefix",
-    version: "1.5",
+    version: "2.1",
     author: "Ivdra Uchiwa",
     countDown: 5,
     role: 0,
-    description: "Change bot prefix",
+    description: "Change bot prefix + affiche les infos en image",
     category: "config",
     guide: {
       en:
         "   {pn} <new prefix>: change prefix\n" +
-        "   Example:\n" +
-        "    {pn} #\n\n" +
-        "   {pn} <new prefix> -g: system (admin)\n" +
-        "   Example:\n" +
-        "    {pn} # -g\n\n" +
-        "   {pn} reset: reset prefix"
+        "   Example: {pn} #\n\n" +
+        "   {pn} <new prefix> -g: system prefix (admin only)\n" +
+        "   Example: {pn} # -g\n\n" +
+        "   {pn} reset: reset prefix to default"
     }
   },
 
   langs: {
     en: {
-      reset:           "Your prefix has been reset: %1",
-      onlyAdmin:       "Only admin can change system prefix",
-      confirmGlobal:   "React to confirm",
-      confirmThisThread:"React to confirm",
-      successGlobal:   "System prefix changed to: %1",
-      successThisThread:"Group prefix changed to: %1"
+      reset: "Your prefix has been reset: %1",
+      onlyAdmin: "Only admin can change the system prefix",
+      confirmGlobal: "React to confirm the system prefix change",
+      confirmThisThread: "React to confirm the group prefix change",
+      successGlobal: "✅ System prefix changed to: %1",
+      successThisThread: "✅ Group prefix changed to: %1"
     }
   },
 
-  // ── /prefix <new> ──────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
   onStart: async function ({ message, role, args, commandName, event, threadsData, getLang }) {
     if (!args[0]) return message.SyntaxError();
 
@@ -276,14 +61,17 @@ module.exports = {
     );
   },
 
-  // ── Réaction de confirmation ──────────────────────
+  // ─────────────────────────────────────────────────────────────
   onReaction: async function ({ message, threadsData, event, Reaction, getLang }) {
     const { author, newPrefix, setGlobal } = Reaction;
     if (event.userID !== author) return;
 
     if (setGlobal) {
       global.GoatBot.config.prefix = newPrefix;
-      fs.writeFileSync(global.client.dirConfig, JSON.stringify(global.GoatBot.config, null, 2));
+      fs.writeFileSync(
+        global.client.dirConfig,
+        JSON.stringify(global.GoatBot.config, null, 2)
+      );
       return message.reply(getLang("successGlobal", newPrefix));
     } else {
       await threadsData.set(event.threadID, newPrefix, "data.prefix");
@@ -291,44 +79,151 @@ module.exports = {
     }
   },
 
-  // ── Taper "prefix" sans commande → carte orbitale ─
+  // ─────────────────────────────────────────────────────────────
   onChat: async function ({ event, message, usersData }) {
     if (!event.body || event.body.toLowerCase() !== "prefix") return;
 
-    const senderID    = event.senderID;
-    const userName    = await usersData.getName(senderID) || "User";
-    const sysPrefix   = global.GoatBot.config.prefix || "•";
-    const threadPrefix = utils.getPrefix(event.threadID) || sysPrefix;
+    const userName     = await usersData.getName(event.senderID);
+    const systemPrefix = global.GoatBot.config.prefix;
+    const threadPrefix = utils.getPrefix(event.threadID);
 
-    const creator = "Ivdra Uchiwa";
-    const fbLink  = "fb.me/kakashi.cmr";
+    // ── Texte stylé ────────────────────────────────────────────
+    const textInfo =
+      `╭════════════╮\n` +
+      ` ┃\n` +
+      ` ┃ 💠 Current bot prefix : ${threadPrefix}\n` +
+      ` ┃ 🗝️  System prefix : ${systemPrefix}\n` +
+      ` ┃ 🫡 I am at your service ${userName}\n` +
+      ` ┃ 📌 Type ${threadPrefix}help to see command list\n` +
+      ` ┃ 👑 Creator: Ivdra Uchiwa\n` +
+      ` ┃ 🔗 Facebook: https://www.facebook.com/kakashi.cmr\n` +
+      ` ┃\n` +
+      `╰════════════╯`;
 
-    // Texte de secours (envoyé si image échoue)
-    const msg =
-`╭══════════════╮
- ┃
- ┃ 💠 Current prefix : ${threadPrefix}
- ┃ 🗝️ System prefix  : ${sysPrefix}
- ┃ 😊 ${userName}
- ┃ 📌 ${threadPrefix}help pour voir les cmds
- ┃ 👑 Creator: ${creator}
- ┃ 🔗 ${fbLink}
- ┃
- ╰══════════════╯`;
+    // ── Génération de l'image ──────────────────────────────────
+    const W = 700, H = 520;
+    const canvas = createCanvas(W, H);
+    const ctx = canvas.getContext("2d");
 
-    // Générer la carte
-    const tmpDir = path.join(__dirname, "../tmp");
-    if (!fsN.existsSync(tmpDir)) fsN.mkdirSync(tmpDir, { recursive: true });
+    // Fond dégradé sombre
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, "#0a0a1a");
+    bgGrad.addColorStop(1, "#12121e");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
 
-    const imgPath = await generateOrbitalCard({
-      sysPrefix, threadPrefix, userName,
-      creator, fbLink,
-      uid: senderID, tmpDir
+    // ── Titre ──────────────────────────────────────────────────
+    ctx.textAlign = "center";
+    ctx.font = "bold 22px DejaVu Sans, Arial";
+    ctx.shadowColor = "#cc0000";
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = "#ff5555";
+    ctx.fillText("⚙  INFORMATIONS BOT", W / 2, 40);
+    ctx.shadowBlur = 0;
+
+    // Ligne déco titre
+    ctx.strokeStyle = "rgba(200,40,40,0.7)";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(40, 55); ctx.lineTo(W - 40, 55); ctx.stroke();
+
+    // ── Fonction badge ─────────────────────────────────────────
+    function drawBadge(cx, cy, rw, rh, borderColor, bgColor, label, value) {
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.7)";
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetX = 4;
+      ctx.shadowOffsetY = 4;
+      ctx.fillStyle = bgColor;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      for (let i = 0; i < 3; i++) {
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = 3 - i;
+        ctx.globalAlpha = 1 - i * 0.25;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rw - i, rh - i, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.strokeStyle = borderColor;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - rw + 18, cy + 3);
+      ctx.lineTo(cx + rw - 18, cy + 3);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      ctx.textAlign = "center";
+      ctx.font = "bold 13px DejaVu Sans, Arial";
+      ctx.fillStyle = borderColor;
+      ctx.fillText(label, cx, cy - rh / 2 + 14);
+
+      ctx.font = "bold 17px DejaVu Sans, Arial";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(value, cx, cy + rh / 2 - 10);
+    }
+
+    // ── Lignes de connexion centre → satellites ────────────────
+    const ccx = W / 2, ccy = H / 2 + 10;
+    const lineTargets = [
+      { x: 120,     y: 145,     col: "rgba(80,180,255,0.4)" },
+      { x: W - 120, y: 145,     col: "rgba(255,80,80,0.4)" },
+      { x: 80,      y: ccy,     col: "rgba(80,255,160,0.4)" },
+      { x: W - 80,  y: ccy,     col: "rgba(200,80,255,0.4)" },
+      { x: 155,     y: H - 108, col: "rgba(255,200,60,0.4)" },
+      { x: W - 155, y: H - 108, col: "rgba(60,230,255,0.4)" },
+    ];
+    lineTargets.forEach(t => {
+      ctx.strokeStyle = t.col;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.moveTo(ccx, ccy);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
     });
+    ctx.setLineDash([]);
 
-    await sendWithImage(message, event, msg, imgPath);
+    // ── Badge central ──────────────────────────────────────────
+    drawBadge(ccx, ccy, 82, 52, "#ff4040", "#3c0a0a", "🔴  SYSTEME", systemPrefix);
 
-    // Nettoyage
-    setTimeout(() => { try { if (imgPath) fsN.unlinkSync(imgPath); } catch {} }, 15000);
+    // ── Badges satellites ──────────────────────────────────────
+    const badges = [
+      { x: 120,     y: 145,     rw: 92, rh: 46, border: "#50b4ff", bg: "#08193a", label: "💠 Prefix groupe",   val: threadPrefix },
+      { x: W - 120, y: 145,     rw: 92, rh: 46, border: "#ff5050", bg: "#3a0808", label: "🗝️  Prefix système", val: systemPrefix },
+      { x: 80,      y: ccy,     rw: 84, rh: 42, border: "#50ffa0", bg: "#083219", label: "👤 Utilisateur",      val: userName.length > 14 ? userName.slice(0, 13) + "…" : userName },
+      { x: W - 80,  y: ccy,     rw: 84, rh: 42, border: "#c850ff", bg: "#230838", label: "👑 Créateur",         val: "Ivdra Uchiwa" },
+      { x: 155,     y: H - 108, rw: 90, rh: 46, border: "#ffc83c", bg: "#322500", label: "📌 Help",             val: `${threadPrefix}help` },
+      { x: W - 155, y: H - 108, rw: 90, rh: 46, border: "#3ce6ff", bg: "#052830", label: "🔗 Facebook",         val: "kakashi.cmr" },
+    ];
+    badges.forEach(b => drawBadge(b.x, b.y, b.rw, b.rh, b.border, b.bg, b.label, b.val));
+
+    // ── Bas de page ───────────────────────────────────────────
+    ctx.strokeStyle = "rgba(200,40,40,0.4)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(40, H - 36); ctx.lineTo(W - 40, H - 36); ctx.stroke();
+
+    ctx.textAlign = "center";
+    ctx.font = "12px DejaVu Sans, Arial";
+    ctx.fillStyle = "rgba(160,160,190,0.85)";
+    ctx.fillText(`Je suis à votre service, ${userName}  •  GoatBot`, W / 2, H - 16);
+
+    // ── Sauvegarde et envoi ───────────────────────────────────
+    const cacheDir = path.join(__dirname, "cache");
+    fs.ensureDirSync(cacheDir);
+    const imgPath = path.join(cacheDir, `prefix_${event.threadID}.png`);
+    const buffer = canvas.toBuffer("image/png");
+    fs.writeFileSync(imgPath, buffer);
+
+    // ── Envoi : texte + image ensemble ────────────────────────
+    return message.reply({
+      body: textInfo,
+      attachment: fs.createReadStream(imgPath)
+    });
   }
 };
