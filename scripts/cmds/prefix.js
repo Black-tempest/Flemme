@@ -89,7 +89,7 @@ module.exports = {
 
     // ── Texte stylé ────────────────────────────────────────────
     const textInfo =
-      `╭════════════╮\n` +
+      ` ╭════════════╮\n` +
       ` ┃\n` +
       ` ┃ 💠 Current bot prefix : ${threadPrefix}\n` +
       ` ┃ 🗝️  System prefix : ${systemPrefix}\n` +
@@ -98,7 +98,7 @@ module.exports = {
       ` ┃ 👑 Creator: Ivdra Uchiwa\n` +
       ` ┃ 🔗 Facebook: https://www.facebook.com/kakashi.cmr\n` +
       ` ┃\n` +
-      `╰════════════╯`;
+      ` ╰════════════╯`;
 
     // ── Génération de l'image ──────────────────────────────────
     const W = 700, H = 520;
