@@ -14,7 +14,7 @@ function getRole(threadData, senderID) {
 }
 
 function box(lines) {
-	const SEP = "━━━━━━━━━━━━━";
+	const SEP = "━━━━━━━━━━━━━━━━";
 	const result = [SEP];
 	for (const line of lines) {
 		if (line === "---") result.push(SEP);
