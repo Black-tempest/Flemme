@@ -111,7 +111,7 @@ function getRoleConfig(utils, command, isGroup, threadData, commandName) {
 	}
 	else roleConfig = { onStart: 0 };
 
-	if (isGroup)
+	if (isGroup && threadData && threadData.data)
 		roleConfig.onStart = threadData.data.setRole?.[commandName] ?? roleConfig.onStart;
 
 	for (const key of ["onChat", "onStart", "onReaction", "onReply"])
@@ -125,28 +125,29 @@ function isBannedOrOnlyAdmin(userData, threadData, senderID, threadID, isGroup, 
 	const config = global.GoatBot.config;
 	const { adminBot, hideNotiMessage } = config;
 
-	const infoBannedUser = userData.banned;
-	if (infoBannedUser.status == true) {
+	const infoBannedUser = userData && userData.banned;
+	if (infoBannedUser && infoBannedUser.status == true) {
 		const { reason, date } = infoBannedUser;
 		if (hideNotiMessage.userBanned == false)
 			message.reply(getText("userBanned", reason, date, senderID, lang));
 		return true;
 	}
 
-	if (config.adminOnly.enable == true && !adminBot.includes(senderID) && !config.adminOnly.ignoreCommand.includes(commandName)) {
+	if (config.adminOnly.enable == true && !adminBot.includes(senderID) && !(config.adminOnly.ignoreCommand || []).includes(commandName)) {
 		if (hideNotiMessage.adminOnly == false)
 			message.reply(getText("onlyAdminBot", null, null, null, lang));
 		return true;
 	}
 
-	if (isGroup == true) {
-		if (threadData.data.onlyAdminBox === true && !threadData.adminIDs.includes(senderID) && !(threadData.data.ignoreCommanToOnlyAdminBox || []).includes(commandName)) {
+	if (isGroup == true && threadData) {
+		const adminIDs = Array.isArray(threadData.adminIDs) ? threadData.adminIDs : [];
+		if (threadData.data && threadData.data.onlyAdminBox === true && !adminIDs.includes(senderID) && !(threadData.data.ignoreCommanToOnlyAdminBox || []).includes(commandName)) {
 			if (!threadData.data.hideNotiMessageOnlyAdminBox)
 				message.reply(getText("onlyAdminBox", null, null, null, lang));
 			return true;
 		}
 		const infoBannedThread = threadData.banned;
-		if (infoBannedThread.status == true) {
+		if (infoBannedThread && infoBannedThread.status == true) {
 			const { reason, date } = infoBannedThread;
 			if (hideNotiMessage.threadBanned == false)
 				message.reply(getText("threadBanned", reason, date, threadID, lang));
@@ -202,14 +203,16 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 			if (global.temp.createThreadDataError.includes(threadID)) return;
 			threadData = await threadsData.create(threadID);
 			global.db.receivedTheFirstMessage[threadID] = true;
-		} else {
+		} else if (threadData) {
 			if (autoRefreshThreadInfoFirstTime === true && !global.db.receivedTheFirstMessage[threadID]) {
 				global.db.receivedTheFirstMessage[threadID] = true;
 				await threadsData.refreshInfo(threadID);
 			}
 		}
 
-		if (typeof threadData.settings.hideNotiMessage == "object")
+		if (!userData || !threadData) return;
+
+		if (threadData.settings && typeof threadData.settings.hideNotiMessage == "object")
 			hideNotiMessage = threadData.settings.hideNotiMessage;
 
 		const prefix = getPrefix(threadID);
@@ -228,7 +231,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 				return body_.replace(new RegExp(`^${prefix_}(\\s+|)${commandName_}`, "i"), "").trim();
 			}
 		};
-		const langCode = threadData.data.lang || config.language || "en";
+		const langCode = (threadData.data && threadData.data.lang) || config.language || "en";
 
 		function createMessageSyntaxError(commandName) {
 			message.SyntaxError = async function () {
@@ -250,7 +253,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 			const args = body.slice(prefix.length).trim().split(/ +/);
 			let commandName = args.shift().toLowerCase();
 			let command = GoatBot.commands.get(commandName) || GoatBot.commands.get(GoatBot.aliases.get(commandName));
-			const aliasesData = threadData.data.aliases || {};
+			const aliasesData = (threadData.data && threadData.data.aliases) || {};
 			for (const cmdName in aliasesData) {
 				if (aliasesData[cmdName].includes(commandName)) {
 					command = GoatBot.commands.get(cmdName);
@@ -305,7 +308,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 			if (!client.countDown[commandName]) client.countDown[commandName] = {};
 			const timestamps = client.countDown[commandName];
 			let getCoolDown = command.config.countDown;
-			if (!getCoolDown && getCoolDown != 0 || isNaN(getCoolDown)) getCoolDown = 1;
+			if ((!getCoolDown && getCoolDown != 0) || isNaN(getCoolDown)) getCoolDown = 1;
 			const cooldownCommand = getCoolDown * 1000;
 			if (timestamps[senderID]) {
 				const expirationTime = timestamps[senderID] + cooldownCommand;
@@ -444,7 +447,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 			const { onReply } = GoatBot;
 			const Reply = onReply.get(event.messageReply.messageID);
 			if (!Reply) return;
-			Reply.delete = () => onReply.delete(messageID);
+			Reply.delete = () => onReply.delete(event.messageReply.messageID);
 			const commandName = Reply.commandName;
 			if (!commandName) {
 				message.reply(box(["  ❌  Nom de cmd introuvable"]));
