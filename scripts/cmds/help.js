@@ -1,13 +1,18 @@
-const { getPrefix } = global.utils;
-const { commands, aliases } = global.GoatBot;
-const axios = require("axios");
-const fs = require("fs");
+•cmd install help.js const axios = require("axios");
+const fs = require("fs-extra");
 const path = require("path");
 const { createCanvas, loadImage } = require("canvas");
 
-// ═══════════════════════════════════════
-//  BOLD UNICODE
-// ═══════════════════════════════════════
+let bgToggle = 0;
+const bgUrls = [
+  "https://i.ibb.co/VWG8RRp2/8f7c19943000.jpg",
+  "https://i.ibb.co/jk6X8mZk/a0b497962141.jpg",
+  "https://files.catbox.moe/e7rojn",
+  "https://files.catbox.moe/h4e583",
+  "https://files.catbox.moe/0bz32x",
+  "https://files.catbox.moe/nb99w2"
+];
+
 function toBold(text) {
   const map = {
     A:"𝐀",B:"𝐁",C:"𝐂",D:"𝐃",E:"𝐄",F:"𝐅",G:"𝐆",H:"𝐇",I:"𝐈",J:"𝐉",
@@ -20,23 +25,18 @@ function toBold(text) {
   return text.split('').map(c => map[c] || c).join('');
 }
 
-// ═══════════════════════════════════════
-//  CATÉGORIE — FIX RÉPÉTITION
-// ═══════════════════════════════════════
 function normalizeCategory(cat) {
   if (!cat) return "other";
   return cat.toLowerCase().normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]/g, "").trim();
 }
+
 function cleanCategoryName(cat) {
   if (!cat) return "OTHER";
   return cat.trim().toUpperCase();
 }
 
-// ═══════════════════════════════════════
-//  RÔLE
-// ═══════════════════════════════════════
 function roleText(role) {
   if (role == 0) return "All users";
   if (role == 1) return "Group admin";
@@ -44,9 +44,6 @@ function roleText(role) {
   return "Unknown";
 }
 
-// ═══════════════════════════════════════
-//  DESSIN CERCLE AVATAR (clip circulaire)
-// ═══════════════════════════════════════
 function drawCircleImage(ctx, img, x, y, r) {
   ctx.save();
   ctx.beginPath();
@@ -57,287 +54,195 @@ function drawCircleImage(ctx, img, x, y, r) {
   ctx.restore();
 }
 
-// ═══════════════════════════════════════
-//  GÉNÉRATION CARTE IMAGE (canvas Node.js)
-// ═══════════════════════════════════════
-async function generateProfileCard({ name, uid, totalCmds, prefix, avatarBuffer }) {
-  const W = 920, H = 440;
+function drawOutlinedText(ctx, text, x, y, font, fillColor, strokeColor = "#000000", lineWidth = 4) {
+  ctx.save();
+  ctx.font = font;
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = "round";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = fillColor;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+async function generateProfileCard({ name, uid, totalCmds, prefix, avatarBuffer, bgUrl }) {
+  const W = 960, H = 440;
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
 
-  // ── Fond dégradé
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0,   "#080814");
-  grad.addColorStop(1,   "#0f0f28");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // ── Grille
-  ctx.strokeStyle = "rgba(40,40,80,0.8)";
-  ctx.lineWidth = 1;
-  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
-  for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
-
-  // ── Glow vert autour de l'avatar
-  const AX = 200, AY = 220, AR = 115;
-  for (let i = 30; i > 0; i -= 3) {
-    ctx.beginPath();
-    ctx.arc(AX, AY, AR + i, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(0,255,157,${0.018 * (i / 30) ** 2})`;
-    ctx.lineWidth = 4;
-    ctx.stroke();
+  try {
+    const res = await axios.get(bgUrl, { responseType: "arraybuffer", timeout: 10000 });
+    const bg = await loadImage(Buffer.from(res.data));
+    ctx.drawImage(bg, 0, 0, W, H);
+  } catch {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, "#080814");
+    grad.addColorStop(1, "#0f0f28");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
   }
 
-  // ── Photo de profil
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(0, 0, W, H);
+
+  const AX = 150, AY = 200, AR = 100;
   if (avatarBuffer) {
     try {
       const img = await loadImage(avatarBuffer);
       drawCircleImage(ctx, img, AX, AY, AR);
     } catch {
-      // Fallback initiales
       ctx.fillStyle = "#12122e";
       ctx.beginPath(); ctx.arc(AX, AY, AR, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#00ff9d";
-      ctx.font = "bold 52px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(name.slice(0,2).toUpperCase(), AX, AY);
+      drawOutlinedText(ctx, name.slice(0,2).toUpperCase(), AX, AY, "bold 48px sans-serif", "#00ff9d", "#000000", 5);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
     }
   } else {
     ctx.fillStyle = "#12122e";
     ctx.beginPath(); ctx.arc(AX, AY, AR, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#00ff9d";
-    ctx.font = "bold 52px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(name.slice(0,2).toUpperCase(), AX, AY);
+    drawOutlinedText(ctx, name.slice(0,2).toUpperCase(), AX, AY, "bold 48px sans-serif", "#00ff9d", "#000000", 5);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
   }
 
-  // Bordure verte autour de l'avatar
   ctx.beginPath();
   ctx.arc(AX, AY, AR, 0, Math.PI * 2);
   ctx.strokeStyle = "#00ff9d";
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 4;
   ctx.stroke();
 
-  // ── Brackets coins
-  const bDraw = (x, y, dx, dy, color) => {
-    const s = 30, w = 3;
-    ctx.strokeStyle = color; ctx.lineWidth = w;
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dx*s, y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + dy*s); ctx.stroke();
-  };
-  bDraw(20, 20,   1,  1, "#00ff9d");
-  bDraw(W-20, 20, -1,  1, "#7b61ff");
-  bDraw(20, H-20,  1, -1, "#00ff9d");
-  bDraw(W-20, H-20,-1,-1, "#7b61ff");
-
-  // ── Séparateur vertical
-  const TX = AX + AR + 50;
-  const sepGrad = ctx.createLinearGradient(TX, 65, TX, H - 55);
-  sepGrad.addColorStop(0,   "rgba(60,60,120,0)");
-  sepGrad.addColorStop(0.5, "rgba(60,60,120,0.9)");
-  sepGrad.addColorStop(1,   "rgba(60,60,120,0)");
-  ctx.strokeStyle = sepGrad;
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(TX, 65); ctx.lineTo(TX, H - 55); ctx.stroke();
-
-  const TX2 = TX + 28;
+  const TX = AX + AR + 60;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
-  // ── Nom
   ctx.font = "bold 40px sans-serif";
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(name, TX2, 65);
+  const maxNameWidth = W - TX - 20;
+  let displayName = name;
+  if (ctx.measureText(displayName).width > maxNameWidth) {
+    while (ctx.measureText(displayName + "…").width > maxNameWidth && displayName.length > 0) {
+      displayName = displayName.slice(0, -1);
+    }
+    displayName += "…";
+  }
+  drawOutlinedText(ctx, displayName, TX, 70, "bold 40px sans-serif", "#ffffff", "#000000", 5);
 
-  // Underline vert sous le nom
-  const nw = ctx.measureText(name).width;
+  const nameW = ctx.measureText(displayName).width;
   ctx.fillStyle = "#00ff9d";
-  ctx.fillRect(TX2, 115, Math.min(nw, 380), 2);
+  ctx.fillRect(TX, 115, Math.min(nameW, maxNameWidth), 3);
 
-  // ── Lignes d'info
-  const rows = [
-    { label: "UID",       value: uid,                  color: "#00ff9d", icon: "ID" },
-    { label: "Cmds",      value: `${totalCmds} dispo`, color: "#7b61ff", icon: "##" },
-    { label: "Prefixe",   value: prefix,               color: "#ffd60a", icon: ">_" },
-    { label: "Bot",       value: "GoatBot v10.4",      color: "#ff3cac", icon: "[]" },
+  const col1 = TX;
+  const col2 = TX + 280;
+  const lineHeight = 45;
+  let y = 145;
+
+  const infoLines = [
+    { label: "🆔 UID",        value: uid,                  labelColor: "#c850ff", valueColor: "#ffffff" },
+    { label: "⚙️ Cmds",      value: `${totalCmds} dispo`, labelColor: "#7b61ff", valueColor: "#ffffff" },
+    { label: "💠 Prefixe",   value: prefix,               labelColor: "#ffd60a", valueColor: "#ffffff" },
+    { label: "🤖 Bot",       value: "GoatBot v2",      labelColor: "#ff3cac", valueColor: "#ffffff" }
   ];
 
-  let yy = 136;
-  for (const row of rows) {
-    // Fond pill
-    ctx.fillStyle = "rgba(14,14,36,0.85)";
-    roundRect(ctx, TX2 - 5, yy - 5, 410, 38, 7);
-    ctx.fill();
-
-    // Icône + label
-    ctx.font = "bold 20px monospace";
-    ctx.fillStyle = "#6666aa";
-    ctx.fillText(`${row.icon} ${row.label}: `, TX2 + 8, yy + 4);
-    const lw = ctx.measureText(`${row.icon} ${row.label}: `).width;
-
-    // Valeur colorée
-    ctx.font = "bold 19px monospace";
-    ctx.fillStyle = row.color;
-    ctx.fillText(row.value, TX2 + 8 + lw, yy + 5);
-
-    yy += 50;
+  for (const line of infoLines) {
+    drawOutlinedText(ctx, line.label, col1, y, "bold 24px sans-serif", line.labelColor, "#000000", 4);
+    drawOutlinedText(ctx, line.value, col2, y, "bold 24px sans-serif", line.valueColor, "#000000", 4);
+    y += lineHeight;
   }
 
-  // ── Barre du bas
   ctx.fillStyle = "#050510";
-  ctx.fillRect(0, H - 44, W, 44);
+  ctx.fillRect(0, H - 40, W, 40);
   ctx.fillStyle = "#1a1a38";
-  ctx.fillRect(0, H - 44, W, 1);
+  ctx.fillRect(0, H - 40, W, 1);
 
-  ctx.font = "16px monospace";
-  ctx.fillStyle = "#444466";
-  ctx.fillText(`Tape  ${prefix}help <commande>  pour plus de details`, TX2, H - 28);
-  ctx.textAlign = "right";
-  ctx.fillText("• help v10.4", W - 20, H - 28);
+  ctx.font = "14px monospace";
+  ctx.fillStyle = "#aaaacc";
+  ctx.fillText(`Tape  ${prefix}help <commande>  pour plus de details`, TX, H - 26);
 
   return canvas.toBuffer("image/png");
 }
 
-// Utilitaire roundRect compatible toutes versions canvas
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-// ═══════════════════════════════════════
-//  TÉLÉCHARGER LA PHOTO DE PROFIL
-// ═══════════════════════════════════════
 async function downloadAvatar(senderID) {
   const url = `https://graph.facebook.com/${senderID}/picture?width=512&height=512&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`;
   try {
     const res = await axios.get(url, { responseType: "arraybuffer", timeout: 8000 });
-    return Buffer.from(res.data); // retourne un Buffer directement
+    return Buffer.from(res.data);
   } catch {
     return null;
   }
 }
 
-// ═══════════════════════════════════════
-//  MODULE PRINCIPAL
-// ═══════════════════════════════════════
 module.exports = {
   config: {
     name: "help",
-    version: "10.4",
+    version: "10.5",
     author: "Ivdra Uchiwa",
     role: 0,
     category: "info"
   },
 
-  onStart: async function ({ message, args, event, usersData }) {
-    const prefix   = await getPrefix(event.threadID);
+  onStart: async function ({ message, args, event, usersData, api }) {
+    const { getPrefix } = global.utils;
+    const prefix = await getPrefix(event.threadID);
     const userName = (await usersData.getName(event.senderID)) || "User";
     const senderID = event.senderID;
+    const { commands, aliases } = global.GoatBot;
 
-    // ─────────── LISTE ───────────
-    if (!args.length) {
-
-      // Texte
-      let msg =
-`╔ ✓ ℂ𝕆𝕄𝕄𝔸ℕ𝔻 𝕃𝕀𝕊𝕋 ✓╗
-║ 😉 hey ${toBold(userName)}, voici la liste des commandes dispo
-╠═══════════════╝
-
-`;
-
-      // FIX RÉPÉTITION — clé normalisée unique
-      const categories = {};
-      for (const [name, value] of commands) {
-        const rawCat = value.config?.category || "OTHER";
-        const key    = normalizeCategory(rawCat);
-        if (!categories[key]) {
-          categories[key] = { displayName: cleanCategoryName(rawCat), cmds: new Set() };
-        }
-        categories[key].cmds.add(name);
+    const categories = {};
+    for (const [name, value] of commands) {
+      const rawCat = value.config?.category || "OTHER";
+      const key = normalizeCategory(rawCat);
+      if (!categories[key]) {
+        categories[key] = { displayName: cleanCategoryName(rawCat), cmds: new Set() };
       }
-
-      Object.values(categories)
-        .sort((a, b) => a.displayName.localeCompare(b.displayName))
-        .forEach(cat => {
-          msg += `【 ${toBold(cat.displayName)} 】\n`;
-          [...cat.cmds].sort((a, b) => a.localeCompare(b)).forEach(cmd => {
-            msg += `➩ ${toBold(cmd)} 🌹\n`;
-          });
-          msg += "\n";
-        });
-
-      msg += `╚═══════════════╝\n`;
-      msg += `✨ Total: ${commands.size} commandes\n`;
-      msg += `📌 Use: ${prefix}help <commande>`;
-
-      // Générer la carte image
-      let imgBuffer = null;
-      try {
-        const avatarBuffer = await downloadAvatar(senderID);
-        imgBuffer = await generateProfileCard({
-          name:        userName,
-          uid:         senderID,
-          totalCmds:   commands.size,
-          prefix,
-          avatarBuffer // Buffer ou null
-        });
-      } catch (e) {
-        console.error("[help] Erreur génération image:", e.message);
-      }
-
-      // ✅ Envoi texte + image en une seule fois
-      if (imgBuffer) {
-        // Sauvegarder dans tmp puis streamer
-        const tmpDir  = path.join(__dirname, "../tmp");
-        if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-        const tmpPath = path.join(tmpDir, `help_${senderID}.png`);
-        fs.writeFileSync(tmpPath, imgBuffer);
-
-        try {
-          await message.reply({
-            body:       msg,
-            attachment: fs.createReadStream(tmpPath)
-          });
-        } catch {
-          try {
-            await message.reply({
-              body:       msg,
-              attachment: [fs.createReadStream(tmpPath)]
-            });
-          } catch {
-            await message.reply(msg);
-          }
-        } finally {
-          setTimeout(() => { try { fs.unlinkSync(tmpPath); } catch {} }, 15000);
-        }
-      } else {
-        await message.reply(msg);
-      }
-
-      return;
+      categories[key].cmds.add(name);
     }
 
-    // ─────────── DÉTAIL COMMANDE ───────────
-    const cmdName = args[0].toLowerCase();
-    const cmd     = commands.get(cmdName) || commands.get(aliases.get(cmdName));
+    const allCmds = [];
+    Object.values(categories)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+      .forEach(cat => {
+        const sorted = [...cat.cmds].sort((a, b) => a.localeCompare(b));
+        sorted.forEach(cmd => allCmds.push({ name: cmd, category: cat.displayName }));
+      });
 
-    if (!cmd)
-      return message.reply(`❌ Commande "${cmdName}" introuvable.`);
+    const perPage = 10;
+    const pages = [];
+    for (let i = 0; i < allCmds.length; i += perPage) {
+      const chunk = allCmds.slice(i, i + perPage);
+      let text = `📄 Page ${pages.length + 1}/${Math.ceil(allCmds.length / perPage)}\n`;
+      const byCat = {};
+      chunk.forEach(cmd => {
+        if (!byCat[cmd.category]) byCat[cmd.category] = [];
+        byCat[cmd.category].push(cmd.name);
+      });
+      for (const [cat, names] of Object.entries(byCat)) {
+        text += `\n【 ${toBold(cat)} 】\n`;
+        names.forEach(n => text += `➩ ${toBold(n)} 🌹\n`);
+      }
+      text += `\n✨ Total: ${commands.size} commandes\n`;
+      text += `📌 Use: ${prefix}help <commande>`;
+      pages.push(text);
+    }
 
-    const cfg = cmd.config;
+    let targetPage = 0;
+    if (args[0]) {
+      if (/^\d+$/.test(args[0])) {
+        const pageNum = parseInt(args[0]);
+        if (pageNum < 1 || pageNum > pages.length) {
+          return message.reply(`❌ Page ${pageNum} invalide. Il y a ${pages.length} page(s).`);
+        }
+        targetPage = pageNum - 1;
+      } else {
+        const cmdName = args[0].toLowerCase();
+        const cmd = commands.get(cmdName) || commands.get(aliases.get(cmdName));
+        if (!cmd) return message.reply(`❌ Commande "${cmdName}" introuvable.`);
 
-    return message.reply(
+        const cfg = cmd.config;
+        return message.reply(
 `╔『 📌ℂ𝕆𝕄𝕄𝔸𝔻 𝕀ℕ𝔽𝕆』╗
 
 ➩ Name: ${toBold(cfg.name)}
@@ -354,6 +259,103 @@ ${toBold((cfg.guide?.en || "Aucun guide")
   .replace(/{n}/g, cfg.name))}
 
 ╚═══════════════╝`
-    );
+        );
+      }
+    }
+
+    bgToggle = (bgToggle + 1) % bgUrls.length;
+    const bgUrl = bgUrls[bgToggle];
+
+    let imgBuffer = null;
+    try {
+      const avatarBuffer = await downloadAvatar(senderID);
+      imgBuffer = await generateProfileCard({
+        name: userName,
+        uid: senderID,
+        totalCmds: commands.size,
+        prefix,
+        avatarBuffer,
+        bgUrl
+      });
+    } catch (e) {
+      console.error("[help] image error:", e.message);
+    }
+
+    const tmpDir = path.join(__dirname, "../tmp");
+    fs.ensureDirSync(tmpDir);
+    const tmpPath = path.join(tmpDir, `help_${senderID}.png`);
+    if (imgBuffer) fs.writeFileSync(tmpPath, imgBuffer);
+
+    let sent;
+    try {
+      sent = await message.reply({
+        body: pages[targetPage],
+        attachment: imgBuffer ? fs.createReadStream(tmpPath) : undefined
+      });
+    } catch {
+      sent = await message.reply({
+        body: pages[targetPage],
+        attachment: imgBuffer ? [fs.createReadStream(tmpPath)] : undefined
+      });
+    }
+
+    if (imgBuffer) {
+      setTimeout(() => { try { fs.unlinkSync(tmpPath); } catch {} }, 15000);
+    }
+
+    const msgID = sent.messageID;
+    if (pages.length > 1) {
+      try {
+        await message.react("◀️");
+        const numEmojis = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+        for (let i = 0; i < Math.min(pages.length, 10); i++) {
+          await message.react(numEmojis[i]);
+        }
+        await message.react("▶️");
+      } catch {}
+    }
+
+    global.GoatBot.onReaction.set(msgID, {
+      commandName: "help",
+      pages,
+      currentPage: targetPage,
+      userID: senderID,
+      messageID: msgID
+    });
+
+    setTimeout(() => {
+      global.GoatBot.onReaction.delete(msgID);
+    }, 300000);
+  },
+
+  onReaction: async function ({ message, event, Reaction, api }) {
+    const { pages, currentPage, userID, messageID } = Reaction;
+    if (event.userID !== userID) return;
+
+    const emoji = event.reaction;
+    let newPage = currentPage;
+
+    if (emoji === "▶️") {
+      newPage = Math.min(currentPage + 1, pages.length - 1);
+    } else if (emoji === "◀️") {
+      newPage = Math.max(currentPage - 1, 0);
+    } else {
+      const idx = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"].indexOf(emoji);
+      if (idx !== -1 && idx < pages.length) newPage = idx;
+    }
+
+    if (newPage !== currentPage) {
+      try {
+        await api.editMessage(pages[newPage], messageID);
+        Reaction.currentPage = newPage;
+        global.GoatBot.onReaction.set(messageID, Reaction);
+      } catch (err) {
+        console.error("[help] edit error:", err.message);
+      }
+    }
+
+    try {
+      await api.setMessageReaction(event.messageID, "🗑️", false);
+    } catch {}
   }
 };
