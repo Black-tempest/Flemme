@@ -46,51 +46,51 @@ function applySavedRoles() {
 function roleBox(commandName, level) {
 	if (level == 1)
 		return box([
-			"  🛡️  ACCÈS REFUSÉ  🛡️",
+			"  🛡️  ACCESS DENIED  🛡️",
 			"---",
-			`  Cmd : ${commandName}`,
+			`  Command: ${commandName}`,
 			"---",
-			"  Admin groupe requis !",
+			"  Group admin required!",
 		]);
 	return box([
-		"  👑  ACCÈS REFUSÉ  👑",
+		"  👑  ACCESS DENIED  👑",
 		"---",
-		`  Cmd : ${commandName}`,
+		`  Command: ${commandName}`,
 		"---",
-		"  Admin bot requis !",
+		"  Bot admin required!",
 	]);
 }
 
 function getText(type, reason, time, targetID, lang) {
 	if (type == "userBanned")
 		return box([
-			"  🚫  ACCÈS REFUSÉ  🚫",
+			"  🚫  ACCESS DENIED  🚫",
 			"---",
-			"  Tu es banni du bot !",
-			`  Raison : ${(reason || "?").slice(0, 18)}`,
-			`  Depuis : ${(time || "?").slice(0, 18)}`,
+			"  You are banned from the bot!",
+			`  Reason: ${(reason || "?").slice(0, 18)}`,
+			`  Since: ${(time || "?").slice(0, 18)}`,
 		]);
 	else if (type == "threadBanned")
 		return box([
-			"  🚫  GROUPE BANNI  🚫",
+			"  🚫  GROUP BANNED  🚫",
 			"---",
-			"  Ce groupe est banni !",
-			`  Raison : ${(reason || "?").slice(0, 18)}`,
-			`  Depuis : ${(time || "?").slice(0, 18)}`,
+			"  This group is banned!",
+			`  Reason: ${(reason || "?").slice(0, 18)}`,
+			`  Since: ${(time || "?").slice(0, 18)}`,
 		]);
 	else if (type == "onlyAdminBox")
 		return box([
-			"  🛡️  ACCÈS REFUSÉ  🛡️",
+			"  🛡️  ACCESS DENIED  🛡️",
 			"---",
-			"  Réservé aux admins",
-			"  du groupe !",
+			"  Reserved for group",
+			"  admins only!",
 		]);
 	else if (type == "onlyAdminBot")
 		return box([
-			"  👑  ACCÈS REFUSÉ  👑",
+			"  👑  ACCESS DENIED  👑",
 			"---",
-			"  Réservé à l'admin",
-			"  du bot uniquement !",
+			"  Reserved for bot",
+			"  admin only!",
 		]);
 }
 
@@ -176,6 +176,41 @@ function createGetText2(langCode, pathCustomLang, prefix, command) {
 	return getText2;
 }
 
+function levenshteinDistance(a, b) {
+	const matrix = [];
+	for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+	for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+	for (let i = 1; i <= b.length; i++) {
+		for (let j = 1; j <= a.length; j++) {
+			if (b.charAt(i - 1) === a.charAt(j - 1)) {
+				matrix[i][j] = matrix[i - 1][j - 1];
+			} else {
+				matrix[i][j] = Math.min(
+					matrix[i - 1][j - 1] + 1,
+					matrix[i][j - 1] + 1,
+					matrix[i - 1][j] + 1
+				);
+			}
+		}
+	}
+	return matrix[b.length][a.length];
+}
+
+function findClosestCommand(input, commandNames) {
+	let best = null;
+	let bestDistance = Infinity;
+	const threshold = 3;
+	const lowerInput = input.toLowerCase();
+	for (const name of commandNames) {
+		const dist = levenshteinDistance(lowerInput, name.toLowerCase());
+		if (dist < bestDistance && dist <= threshold) {
+			bestDistance = dist;
+			best = name;
+		}
+	}
+	return best;
+}
+
 module.exports = function (api, threadModel, userModel, dashBoardModel, globalModel, usersData, threadsData, dashBoardData, globalData) {
 
 	applySavedRoles();
@@ -236,11 +271,11 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 		function createMessageSyntaxError(commandName) {
 			message.SyntaxError = async function () {
 				return await message.reply(box([
-					"  ⚠️  SYNTAXE INCORRECTE  ⚠️",
+					"  ⚠️  INCORRECT SYNTAX  ⚠️",
 					"---",
-					`  Cmd : ${commandName}`,
+					`  Command: ${commandName}`,
 					"---",
-					`  Tape : ${prefix}help ${commandName}`,
+					`  Type: ${prefix}help ${commandName}`,
 				]));
 			};
 		}
@@ -275,25 +310,30 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 			if (isBannedOrOnlyAdmin(userData, threadData, senderID, threadID, isGroup, commandName, message, langCode)) return;
 
 			if (!command) {
-				if (!hideNotiMessage.commandNotFound)
-					return await message.reply(
-						commandName ?
-							box([
-								"  ❓  CMD INTROUVABLE  ❓",
-								"---",
-								`  « ${commandName} » inconnue`,
-								`  Préfixe : ${prefix}`,
-								"---",
-								`  Tape : ${prefix}help`,
-							]) :
-							box([
-								"  ❓  CMD INTROUVABLE  ❓",
-								"---",
-								`  Préfixe du bot : ${prefix}`,
-								"---",
-								`  Tape : ${prefix}help`,
-							])
-					);
+				const allCommandNames = [...GoatBot.commands.keys()];
+				const suggestion = findClosestCommand(commandName, allCommandNames);
+				if (!hideNotiMessage.commandNotFound) {
+					let replyText;
+					if (suggestion) {
+						replyText = box([
+							"  ❓  COMMAND NOT FOUND  ❓",
+							"---",
+							`  "${commandName}" is unknown`,
+							`  Did you mean: ${suggestion}?`,
+							"---",
+							`  Type: ${prefix}help`,
+						]);
+					} else {
+						replyText = box([
+							"  ❓  COMMAND NOT FOUND  ❓",
+							"---",
+							`  "${commandName}" is unknown`,
+							"---",
+							`  Type: ${prefix}help`,
+						]);
+					}
+					return await message.reply(replyText);
+				}
 				else return true;
 			}
 
@@ -314,10 +354,10 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 				const expirationTime = timestamps[senderID] + cooldownCommand;
 				if (dateNow < expirationTime)
 					return await message.reply(box([
-						"  ⏳  PATIENTE  ⏳",
+						"  ⏳  COOLDOWN  ⏳",
 						"---",
-						`  Encore ${((expirationTime - dateNow) / 1000).toString().slice(0, 3)}s`,
-						`  avant : ${commandName}`,
+						`  Wait ${((expirationTime - dateNow) / 1000).toString().slice(0, 3)}s`,
+						`  before using: ${commandName}`,
 					]));
 			}
 
@@ -338,12 +378,12 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 			} catch (err) {
 				log.err("CALL COMMAND", `An error occurred when calling the command ${commandName}`, err);
 				return await message.reply(box([
-					"  ❌  ERREUR  ❌",
+					"  ❌  ERROR  ❌",
 					"---",
-					`  Cmd : ${commandName}`,
-					`  ${time.slice(0, 17)}`,
+					`  Command: ${commandName}`,
+					`  Time: ${time.slice(0, 17)}`,
 					"---",
-					"  Signale ce bug !",
+					"  Please report this bug!",
 				]));
 			}
 		}
@@ -371,7 +411,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 								await handler();
 								log.info("onChat", `${commandName} | ${userData.name} | ${senderID} | ${threadID}`);
 							} catch (err) {
-								await message.reply(box(["  ❌  ERREUR  ❌", "---", `  Cmd : ${commandName}`]));
+								await message.reply(box(["  ❌  ERROR  ❌", "---", `  Command: ${commandName}`]));
 							}
 						}
 					})
@@ -402,7 +442,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 								await handler();
 								log.info("onAnyEvent", `${commandName} | ${senderID} | ${userData.name} | ${threadID}`);
 							} catch (err) {
-								message.reply(box(["  ❌  ERREUR  ❌", "---", `  Cmd : ${commandName}`]));
+								message.reply(box(["  ❌  ERROR  ❌", "---", `  Command: ${commandName}`]));
 								log.err("onAnyEvent", `An error occurred`, err);
 							}
 						}
@@ -434,7 +474,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 								await handler();
 								log.info("onFirstChat", `${commandName} | ${userData.name} | ${senderID} | ${threadID}`);
 							} catch (err) {
-								await message.reply(box(["  ❌  ERREUR  ❌", "---", `  Cmd : ${commandName}`]));
+								await message.reply(box(["  ❌  ERROR  ❌", "---", `  Command: ${commandName}`]));
 							}
 						}
 					})
@@ -450,12 +490,12 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 			Reply.delete = () => onReply.delete(event.messageReply.messageID);
 			const commandName = Reply.commandName;
 			if (!commandName) {
-				message.reply(box(["  ❌  Nom de cmd introuvable"]));
+				message.reply(box(["  ❌  Command name not found"]));
 				return log.err("onReply", `Can't find command name!`, Reply);
 			}
 			const command = GoatBot.commands.get(commandName);
 			if (!command) {
-				message.reply(box(["  ❌  CMD introuvable", "---", `  « ${commandName} »`]));
+				message.reply(box(["  ❌  COMMAND NOT FOUND", "---", `  "${commandName}"`]));
 				return log.err("onReply", `Command "${commandName}" not found`, Reply);
 			}
 			const roleConfig = getRoleConfig(utils, command, isGroup, threadData, commandName);
@@ -473,7 +513,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 				log.info("onReply", `${commandName} | ${userData.name} | ${senderID} | ${threadID}`);
 			} catch (err) {
 				log.err("onReply", `An error occurred`, err);
-				await message.reply(box(["  ❌  ERREUR  ❌", "---", `  Cmd : ${commandName}`]));
+				await message.reply(box(["  ❌  ERROR  ❌", "---", `  Command: ${commandName}`]));
 			}
 		}
 
@@ -484,12 +524,12 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 			Reaction.delete = () => onReaction.delete(messageID);
 			const commandName = Reaction.commandName;
 			if (!commandName) {
-				message.reply(box(["  ❌  Nom de cmd introuvable"]));
+				message.reply(box(["  ❌  Command name not found"]));
 				return log.err("onReaction", `Can't find command name!`, Reaction);
 			}
 			const command = GoatBot.commands.get(commandName);
 			if (!command) {
-				message.reply(box(["  ❌  CMD introuvable", "---", `  « ${commandName} »`]));
+				message.reply(box(["  ❌  COMMAND NOT FOUND", "---", `  "${commandName}"`]));
 				return log.err("onReaction", `Command "${commandName}" not found`, Reaction);
 			}
 			const roleConfig = getRoleConfig(utils, command, isGroup, threadData, commandName);
@@ -506,7 +546,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 				log.info("onReaction", `${commandName} | ${userData.name} | ${senderID} | ${threadID} | ${event.reaction}`);
 			} catch (err) {
 				log.err("onReaction", `An error occurred`, err);
-				await message.reply(box(["  ❌  ERREUR  ❌", "---", `  Cmd : ${commandName}`]));
+				await message.reply(box(["  ❌  ERROR  ❌", "---", `  Command: ${commandName}`]));
 			}
 		}
 
@@ -526,7 +566,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 					}
 				} catch (err) {
 					log.err("EVENT COMMAND", `An error occurred`, err);
-					await message.reply(box(["  ❌  ERREUR EVENT  ❌", "---", `  Cmd : ${commandName}`]));
+					await message.reply(box(["  ❌  EVENT ERROR  ❌", "---", `  Command: ${commandName}`]));
 				}
 			}
 		}
@@ -552,7 +592,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 								await handler();
 								log.info("onEvent", `${commandName} | ${author} | ${userData.name} | ${threadID}`);
 							} catch (err) {
-								message.reply(box(["  ❌  ERREUR  ❌", "---", `  Cmd : ${commandName}`]));
+								message.reply(box(["  ❌  ERROR  ❌", "---", `  Command: ${commandName}`]));
 								log.err("onEvent", `An error occurred`, err);
 							}
 						}
