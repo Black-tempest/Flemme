@@ -216,10 +216,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 	applySavedRoles();
 
 	return async function (event, message) {
-		if (!message || !message.body) {
-			message.send("Error: Message object is invalid.");
-			return;
-		}
+		if (!message || !event) return;
 
 		const { utils, client, GoatBot } = global;
 		const { getPrefix, removeHomeDir, log, getTime } = utils;
