@@ -1,4 +1,4 @@
-const fs = require("fs-extra");
+conteconst fs = require("fs-extra");
 const path = require("path");
 const nullAndUndefined = [undefined, null];
 
