@@ -1,4 +1,4 @@
-conteconst fs = require("fs-extra");
+const fs = require("fs-extra");
 const path = require("path");
 const nullAndUndefined = [undefined, null];
 
@@ -216,6 +216,10 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 	applySavedRoles();
 
 	return async function (event, message) {
+		if (!message || !message.body) {
+			message.send("Error: Message object is invalid.");
+			return;
+		}
 
 		const { utils, client, GoatBot } = global;
 		const { getPrefix, removeHomeDir, log, getTime } = utils;
@@ -235,7 +239,7 @@ module.exports = function (api, threadModel, userModel, dashBoardModel, globalMo
 			userData = await usersData.create(senderID);
 
 		if (!threadData && !isNaN(threadID)) {
-			if (global.temp.createThreadDataError.includes(threadID)) return;
+			if (global.temp && global.temp.createThreadDataError && global.temp.createThreadDataError.includes(threadID)) return;
 			threadData = await threadsData.create(threadID);
 			global.db.receivedTheFirstMessage[threadID] = true;
 		} else if (threadData) {
